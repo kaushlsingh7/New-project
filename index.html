@@ -1,0 +1,693 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SafeStep AI - Safe Route Finder</title>
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" />
+    <link rel="stylesheet" href="style.css">
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    <script src="https://maps.googleapis.com/maps/api/js?key=AIzaSyDjqIw3yA-6hBr4iKEeXvjFPo1k-FDc6rY"></script>
+</head>
+<body>
+    <div class="container">
+        <!-- Sidebar -->
+        <aside class="sidebar">
+            <div class="sidebar-content">
+                <h2>Route & Filters</h2>
+                <p class="sidebar-text">Choose source/destination or enter custom coordinates.</p>
+                
+                <hr class="divider">
+                
+                <!-- Quick Jump Section -->
+                <div class="section">
+                    <h3>Quick Jump</h3>
+                    <div class="input-group">
+                        <input 
+                            type="text" 
+                            id="jumpInput" 
+                            class="input-field" 
+                            placeholder="Jump to city/location or 'lat,lon'"
+                        >
+                        <button class="btn btn-primary" onclick="quickJump()">Go</button>
+                    </div>
+                </div>
+
+                <hr class="divider">
+
+                <!-- Source & Destination -->
+                <div class="section">
+                    <label class="label">Source Location</label>
+                    <div class="search-container">
+                        <input 
+                            type="text" 
+                            id="sourceInput" 
+                            class="input-field search-input" 
+                            placeholder="Type location name or address..."
+                            autocomplete="off"
+                        >
+                        <button type="button" class="btn-map-icon" onclick="openGoogleMap('source')" title="Select on map">
+                            <i class="fas fa-crosshairs"></i>
+                        </button>
+                        <ul id="sourceSuggesions" class="suggestions-list"></ul>
+                    </div>
+                    
+                    <div id="sourceCoords" class="selected-coords" style="display:none;">
+                        <p id="sourceSelected" class="selected-text"></p>
+                        <button type="button" class="btn-clear" onclick="clearSourceSelection()">Change</button>
+                    </div>
+                </div>
+
+                <div class="section">
+                    <label class="label">Destination Location</label>
+                    <div class="search-container">
+                        <input 
+                            type="text" 
+                            id="destinationInput" 
+                            class="input-field search-input" 
+                            placeholder="Type location name or address..."
+                            autocomplete="off"
+                        >
+                        <button type="button" class="btn-map-icon" onclick="openGoogleMap('destination')" title="Select on map">
+                            <i class="fas fa-crosshairs"></i>
+                        </button>
+                        <ul id="destinationSuggesions" class="suggestions-list"></ul>
+                    </div>
+                    
+                    <div id="destCoords" class="selected-coords" style="display:none;">
+                        <p id="destSelected" class="selected-text"></p>
+                        <button type="button" class="btn-clear" onclick="clearDestinationSelection()">Change</button>
+                    </div>
+                </div>
+
+                <hr class="divider">
+
+                <!-- Filters -->
+                <div class="section">
+                    <label class="label">Max Search Distance (km)</label>
+                    <div class="slider-container">
+                        <input 
+                            type="range" 
+                            id="maxDistance" 
+                            class="slider" 
+                            min="0.5" 
+                            max="10" 
+                            step="0.5" 
+                            value="3"
+                        >
+                        <span class="slider-value" id="distanceValue">3.0 km</span>
+                    </div>
+                </div>
+
+                <div class="section">
+                    <label class="label">Minimum Safety Score</label>
+                    <div class="slider-container">
+                        <input 
+                            type="range" 
+                            id="safetyScore" 
+                            class="slider" 
+                            min="1" 
+                            max="10" 
+                            step="1" 
+                            value="1"
+                        >
+                        <span class="slider-value" id="scoreValue">1</span>
+                    </div>
+                </div>
+
+                <div class="section">
+                    <label class="checkbox">
+                        <input type="checkbox" id="onlyAbove">
+                        Show only points above threshold
+                    </label>
+                </div>
+
+                <hr class="divider">
+
+                <!-- Safety Tips -->
+                <div class="safety-tips">
+                    <h3>Safety Tips</h3>
+                    <p>Walk in groups, prefer well-lit routes, stay on main roads, and report hazards to local authorities.</p>
+                </div>
+
+                <hr class="divider">
+
+                <!-- Find Button -->
+                <button class="btn btn-success" onclick="findSafePoints()">
+                    <i class="fas fa-search"></i> Find Top Safe Points
+                </button>
+            </div>
+        </aside>
+
+        <!-- Main Content -->
+        <main class="main-content">
+            <!-- Header -->
+            <header class="header">
+                <h1><i class="fas fa-shield-alt"></i> SafeStep AI</h1>
+                <p class="subtitle">Find and visualize safer walking areas using synthesized safety scores (lighting, crowd density, historical reports).</p>
+            </header>
+
+            <!-- Content Grid -->
+            <div class="content-grid">
+                <!-- Map Section -->
+                <div class="map-section">
+                    <h2>Map — Safety Overview</h2>
+                    <div id="map" class="map-container"></div>
+                </div>
+
+                <!-- Suggestions Panel -->
+                <div class="suggestions-panel">
+                    <h2>Top Suggestions</h2>
+                    <div id="suggestionsContainer" class="suggestions-content">
+                        <div class="info-box">
+                            Click 'Find Top Safe Points' to compute suggestions.
+                        </div>
+                    </div>
+
+                    <hr class="divider">
+
+                    <!-- Dataset Table -->
+                    <h2>Dataset</h2>
+                    <div class="table-container">
+                        <table id="dataTable" class="data-table">
+                            <thead>
+                                <tr>
+                                    <th>Location Name</th>
+                                    <th>Latitude</th>
+                                    <th>Longitude</th>
+                                    <th>Safety Score</th>
+                                    <th>Distance (km)</th>
+                                </tr>
+                            </thead>
+                            <tbody id="tableBody">
+                                <!-- Will be populated by JavaScript -->
+                            </tbody>
+                        </table>
+                    </div>
+
+                    <button class="btn btn-info" onclick="downloadCSV()">
+                        <i class="fas fa-download"></i> Download CSV
+                    </button>
+                </div>
+            </div>
+        </main>
+    </div>
+
+    <!-- Legend -->
+    <div class="legend">
+        <div class="legend-title">Legend</div>
+        <div class="legend-item">
+            <span class="legend-color safe"></span> Safe (>7)
+        </div>
+        <div class="legend-item">
+            <span class="legend-color moderate"></span> Moderate (4-7)
+        </div>
+        <div class="legend-item">
+            <span class="legend-color low"></span> Low (<4)
+        </div>
+        <div class="legend-item">
+            <span class="legend-color source"></span> Source/Destination
+        </div>
+    </div>
+
+    <!-- Message Container -->
+    <div id="messageContainer" class="message-container"></div>
+
+    <!-- Google Maps Modal -->
+    <div id="mapModal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2>Select Location on Map</h2>
+                <p style="margin: 0; color: #64748b; font-size: 0.875rem;">Click on the map to select a location</p>
+                <button type="button" class="modal-close" onclick="closeGoogleMap()">
+                    <i class="fas fa-times"></i>
+                </button>
+            </div>
+            <div class="modal-body">
+                <div id="googleMap" style="width: 100%; height: 500px; background-color: #e5e7eb;"></div>
+                <div class="map-info">
+                    <div>
+                        <p><strong>Selected Location:</strong></p>
+                        <p id="selectedLocation" style="color: #0ea5e9; word-break: break-word;">Click on map to select</p>
+                    </div>
+                    <div id="selectedCoords" style="margin-top: 16px; padding: 12px; background-color: white; border-radius: 6px;">
+                        <p><small id="coordsText" style="color: #64748b;"></small></p>
+                    </div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-secondary" onclick="closeGoogleMap()">Cancel</button>
+                <button class="btn btn-primary" onclick="confirmMapSelection()">Confirm Selection</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Mock data generation
+        function generateMockData(centerLat = 26.8467, centerLon = 80.9462, n = 30) {
+            const data = [];
+            for (let i = 0; i < n; i++) {
+                const lat = centerLat + (Math.random() - 0.5) * 0.04;
+                const lon = centerLon + (Math.random() - 0.5) * 0.04;
+                const score = Math.floor(Math.random() * 10) + 1;
+                data.push({
+                    name: `Point ${i + 1}`,
+                    latitude: parseFloat(lat.toFixed(6)),
+                    longitude: parseFloat(lon.toFixed(6)),
+                    score: score
+                });
+            }
+            return data;
+        }
+
+        // Haversine formula for distance calculation
+        function haversine(lat1, lon1, lat2, lon2) {
+            const R = 6371; // Earth's radius in km
+            const dLat = (lat2 - lat1) * Math.PI / 180;
+            const dLon = (lon2 - lon1) * Math.PI / 180;
+            const a = Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+                      Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) *
+                      Math.sin(dLon / 2) * Math.sin(dLon / 2);
+            const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+            return R * c;
+        }
+
+        // Get marker color based on safety score
+        function getMarkerColor(score) {
+            if (score > 7) return '#22c55e';
+            if (score >= 4) return '#f97316';
+            return '#ef4444';
+        }
+
+        // Initialize map
+        let map;
+        let markers = [];
+        let mockData = generateMockData();
+        let selectedSource = null;
+        let selectedDestination = null;
+
+        function initMap() {
+            map = L.map('map').setView([26.8467, 80.9462], 14);
+            L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+                attribution: '© OpenStreetMap contributors',
+                maxZoom: 19
+            }).addTo(map);
+            
+            setupLocationSearch();
+            updateMap();
+        }
+
+        // Location search setup
+        function setupLocationSearch() {
+            const sourceInput = document.getElementById('sourceInput');
+            const destInput = document.getElementById('destinationInput');
+
+            sourceInput.addEventListener('input', (e) => filterAndShowSuggestions(e.target.value, 'source'));
+            sourceInput.addEventListener('focus', (e) => filterAndShowSuggestions(e.target.value, 'source'));
+            sourceInput.addEventListener('blur', () => setTimeout(() => document.getElementById('sourceSuggesions').innerHTML = '', 200));
+
+            destInput.addEventListener('input', (e) => filterAndShowSuggestions(e.target.value, 'destination'));
+            destInput.addEventListener('focus', (e) => filterAndShowSuggestions(e.target.value, 'destination'));
+            destInput.addEventListener('blur', () => setTimeout(() => document.getElementById('destinationSuggesions').innerHTML = '', 200));
+        }
+
+        // Google Maps Modal Management
+        let googleMap;
+        let currentMapMode = null;
+        let selectedMapCoords = null;
+        let mapMarker = null;
+
+        function openGoogleMap(mode) {
+            currentMapMode = mode;
+            const modal = document.getElementById('mapModal');
+            modal.style.display = 'block';
+
+            setTimeout(() => {
+                // Initialize map if not already done
+                if (!googleMap) {
+                    const defaultLocation = mode === 'source' 
+                        ? (selectedSource || { latitude: 26.8467, longitude: 80.9462 })
+                        : (selectedDestination || { latitude: 26.8477, longitude: 80.9452 });
+
+                    googleMap = new google.maps.Map(document.getElementById('googleMap'), {
+                        zoom: 14,
+                        center: new google.maps.LatLng(defaultLocation.latitude, defaultLocation.longitude),
+                        mapTypeId: google.maps.MapTypeId.ROADMAP,
+                        mapTypeControl: true,
+                        fullscreenControl: true,
+                        zoomControl: true,
+                        streetViewControl: true
+                    });
+
+                    googleMap.addListener('click', onMapClick);
+                } else {
+                    // Update map center based on current mode
+                    const currentLocation = mode === 'source'
+                        ? (selectedSource || { latitude: 26.8467, longitude: 80.9462 })
+                        : (selectedDestination || { latitude: 26.8477, longitude: 80.9452 });
+                    googleMap.setCenter(new google.maps.LatLng(currentLocation.latitude, currentLocation.longitude));
+                    
+                    // Remove old marker if exists
+                    if (mapMarker) {
+                        mapMarker.setMap(null);
+                    }
+                }
+
+                selectedMapCoords = null;
+                document.getElementById('selectedLocation').textContent = 'Click on map to select a location';
+                document.getElementById('coordsText').textContent = '';
+            }, 100);
+        }
+
+        function closeGoogleMap() {
+            const modal = document.getElementById('mapModal');
+            modal.style.display = 'none';
+            selectedMapCoords = null;
+        }
+
+        function onMapClick(event) {
+            const lat = event.latLng.lat();
+            const lng = event.latLng.lng();
+            selectedMapCoords = { latitude: lat, longitude: lng };
+
+            // Remove old marker if exists
+            if (mapMarker) {
+                mapMarker.setMap(null);
+            }
+
+            // Add new marker at clicked location
+            mapMarker = new google.maps.Marker({
+                position: event.latLng,
+                map: googleMap,
+                title: 'Selected Location'
+            });
+
+            // Get location name using reverse geocoding
+            const geocoder = new google.maps.Geocoder();
+            geocoder.geocode({ location: { lat, lng } }, (results, status) => {
+                if (status === 'OK' && results[0]) {
+                    const locationName = results[0].formatted_address;
+                    document.getElementById('selectedLocation').textContent = locationName;
+                } else {
+                    document.getElementById('selectedLocation').textContent = 'Location (' + lat.toFixed(6) + ', ' + lng.toFixed(6) + ')';
+                }
+                document.getElementById('coordsText').textContent = 'Lat: ' + lat.toFixed(6) + ', Lng: ' + lng.toFixed(6);
+            });
+        }
+
+        function confirmMapSelection() {
+            if (!selectedMapCoords) {
+                showMessage('Please select a location on the map', 'error');
+                return;
+            }
+
+            const locationName = document.getElementById('selectedLocation').textContent;
+            const point = {
+                name: locationName,
+                latitude: selectedMapCoords.latitude,
+                longitude: selectedMapCoords.longitude,
+                score: 5 // Default score for manually selected locations
+            };
+
+            selectLocation(point, currentMapMode);
+            closeGoogleMap();
+        }
+
+        // Filter and show suggestions
+        function filterAndShowSuggestions(query, type) {
+            if (!query.trim()) {
+                document.getElementById(type === 'source' ? 'sourceSuggesions' : 'destinationSuggesions').innerHTML = '';
+                return;
+            }
+
+            const filtered = mockData.filter(point =>
+                point.name.toLowerCase().includes(query.toLowerCase())
+            );
+
+            const listId = type === 'source' ? 'sourceSuggesions' : 'destinationSuggesions';
+            const listEl = document.getElementById(listId);
+            listEl.innerHTML = '';
+
+            filtered.slice(0, 8).forEach(point => {
+                const li = document.createElement('li');
+                li.className = 'suggestion-item';
+                li.innerHTML = `<strong>${point.name}</strong><br><small>${point.latitude.toFixed(6)}, ${point.longitude.toFixed(6)}</small>`;
+                li.onclick = () => selectLocation(point, type);
+                listEl.appendChild(li);
+            });
+        }
+
+        // Select a location
+        function selectLocation(point, type) {
+            if (type === 'source') {
+                selectedSource = point;
+                document.getElementById('sourceInput').value = point.name;
+                document.getElementById('sourceInput').style.display = 'none';
+                document.getElementById('sourceCoords').style.display = 'block';
+                document.getElementById('sourceSelected').textContent = `${point.name} (${point.latitude.toFixed(6)}, ${point.longitude.toFixed(6)})`;
+                document.getElementById('sourceSuggesions').innerHTML = '';
+            } else {
+                selectedDestination = point;
+                document.getElementById('destinationInput').value = point.name;
+                document.getElementById('destinationInput').style.display = 'none';
+                document.getElementById('destCoords').style.display = 'block';
+                document.getElementById('destSelected').textContent = `${point.name} (${point.latitude.toFixed(6)}, ${point.longitude.toFixed(6)})`;
+                document.getElementById('destinationSuggesions').innerHTML = '';
+            }
+            updateMap();
+        }
+
+        // Clear selection
+        function clearSourceSelection() {
+            selectedSource = null;
+            document.getElementById('sourceInput').value = '';
+            document.getElementById('sourceInput').style.display = 'block';
+            document.getElementById('sourceCoords').style.display = 'none';
+            document.getElementById('sourceInput').focus();
+            updateMap();
+        }
+
+        function clearDestinationSelection() {
+            selectedDestination = null;
+            document.getElementById('destinationInput').value = '';
+            document.getElementById('destinationInput').style.display = 'block';
+            document.getElementById('destCoords').style.display = 'none';
+            document.getElementById('destinationInput').focus();
+            updateMap();
+        }
+
+        // Update map with current data
+        function updateMap() {
+            // Clear existing markers
+            markers.forEach(marker => map.removeLayer(marker));
+            markers = [];
+
+            // Get source and destination coordinates
+            const defaultSrc = { latitude: 26.8467, longitude: 80.9462 };
+            const defaultDst = { latitude: 26.8477, longitude: 80.9452 };
+
+            const srcLat = selectedSource ? selectedSource.latitude : defaultSrc.latitude;
+            const srcLon = selectedSource ? selectedSource.longitude : defaultSrc.longitude;
+            const dstLat = selectedDestination ? selectedDestination.latitude : defaultDst.latitude;
+            const dstLon = selectedDestination ? selectedDestination.longitude : defaultDst.longitude;
+
+            const maxDist = parseFloat(document.getElementById('maxDistance').value);
+            const minScore = parseInt(document.getElementById('safetyScore').value);
+            const onlyAbove = document.getElementById('onlyAbove').checked;
+
+            // Calculate distances and filter
+            let displayData = mockData.map(point => ({
+                ...point,
+                distance: haversine(dstLat, dstLon, point.latitude, point.longitude)
+            }));
+
+            if (onlyAbove) {
+                displayData = displayData.filter(p => p.score >= minScore);
+            }
+            displayData = displayData.filter(p => p.distance <= maxDist);
+
+            // Add data points to map
+            displayData.forEach(point => {
+                const color = getMarkerColor(point.score);
+                L.circleMarker([point.latitude, point.longitude], {
+                    radius: point.score > 7 ? 8 : 6,
+                    fillColor: color,
+                    color: color,
+                    weight: 2,
+                    opacity: 0.9,
+                    fillOpacity: 0.8,
+                    popup: `<b>${point.name}</b><br>Score: ${point.score}<br>Distance: ${point.distance.toFixed(2)} km`
+                }).addTo(map);
+            });
+
+            // Add source and destination
+            L.marker([srcLat, srcLon], {
+                icon: L.icon({
+                    iconUrl: 'https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-2x-blue.png',
+                    shadowUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/0.7.7/images/marker-shadow.png',
+                    iconSize: [25, 41],
+                    iconAnchor: [12, 41],
+                    popupAnchor: [1, -34],
+                    shadowSize: [41, 41]
+                })
+            }).addTo(map).bindPopup('Source');
+
+            L.marker([dstLat, dstLon], {
+                icon: L.icon({
+                    iconUrl: 'https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-2x-purple.png',
+                    shadowUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/0.7.7/images/marker-shadow.png',
+                    iconSize: [25, 41],
+                    iconAnchor: [12, 41],
+                    popupAnchor: [1, -34],
+                    shadowSize: [41, 41]
+                })
+            }).addTo(map).bindPopup('Destination');
+
+            // Update table
+            updateTable(displayData);
+        }
+
+        // Update data table
+        function updateTable(data) {
+            const tbody = document.getElementById('tableBody');
+            tbody.innerHTML = '';
+            data.sort((a, b) => b.score - a.score).forEach(point => {
+                const row = tbody.insertRow();
+                row.innerHTML = `
+                    <td>${point.name}</td>
+                    <td>${point.latitude.toFixed(6)}</td>
+                    <td>${point.longitude.toFixed(6)}</td>
+                    <td><span class="score-badge score-${point.score > 7 ? 'high' : point.score >= 4 ? 'medium' : 'low'}">${point.score}</span></td>
+                    <td>${point.distance ? point.distance.toFixed(2) : 'N/A'}</td>
+                `;
+            });
+        }
+
+        // Find safe points
+        function findSafePoints() {
+            const defaultDst = { latitude: 26.8477, longitude: 80.9452 };
+            const dstLat = selectedDestination ? selectedDestination.latitude : defaultDst.latitude;
+            const dstLon = selectedDestination ? selectedDestination.longitude : defaultDst.longitude;
+            const maxDist = parseFloat(document.getElementById('maxDistance').value);
+
+            let suggestions = mockData.map(point => ({
+                ...point,
+                distance: haversine(dstLat, dstLon, point.latitude, point.longitude)
+            }));
+
+            suggestions = suggestions.filter(p => p.distance <= maxDist);
+            suggestions.sort((a, b) => b.score - a.score || a.distance - b.distance);
+            suggestions = suggestions.slice(0, 3);
+
+            displaySuggestions(suggestions);
+            updateMap();
+        }
+
+        // Display suggestions
+        function displaySuggestions(suggestions) {
+            const container = document.getElementById('suggestionsContainer');
+            if (suggestions.length === 0) {
+                container.innerHTML = '<div class="info-box">No suggestions found within the search distance.</div>';
+                return;
+            }
+
+            let html = '';
+            suggestions.forEach((point, idx) => {
+                html += `
+                    <div class="suggestion-card">
+                        <div class="suggestion-header">
+                            <strong>${idx + 1}. ${point.name}</strong>
+                            <span class="suggestion-score" style="background-color: ${getMarkerColor(point.score)}">${point.score}</span>
+                        </div>
+                        <p>Distance: ${point.distance.toFixed(2)} km</p>
+                        <button class="btn btn-small" onclick="centerMap(${point.latitude}, ${point.longitude})">
+                            Center map here
+                        </button>
+                    </div>
+                `;
+            });
+
+            container.innerHTML = html;
+        }
+
+        // Center map
+        function centerMap(lat, lon) {
+            map.setView([lat, lon], 15);
+        }
+
+        // Quick jump
+        function quickJump() {
+            const input = document.getElementById('jumpInput').value.trim();
+            const citycenters = {
+                'lucknow': [26.8467, 80.9462],
+                'delhi': [28.6139, 77.2090],
+                'mumbai': [19.0760, 72.8777],
+                'bengaluru': [12.9716, 77.5946],
+                'bangalore': [12.9716, 77.5946],
+                'chennai': [13.0827, 80.2707]
+            };
+
+            if (input.includes(',')) {
+                const parts = input.split(',');
+                const lat = parseFloat(parts[0].trim());
+                const lon = parseFloat(parts[1].trim());
+                if (!isNaN(lat) && !isNaN(lon)) {
+                    centerMap(lat, lon);
+                    showMessage('Centered on coordinates: ' + lat.toFixed(6) + ', ' + lon.toFixed(6), 'success');
+                } else {
+                    showMessage('Invalid coordinates', 'error');
+                }
+            } else if (citycenters[input.toLowerCase()]) {
+                const [lat, lon] = citycenters[input.toLowerCase()];
+                centerMap(lat, lon);
+                showMessage('Centered on city: ' + input, 'success');
+            } else {
+                showMessage('City not found', 'error');
+            }
+        }
+
+        // Download CSV
+        function downloadCSV() {
+            let csv = 'Location Name,Latitude,Longitude,Safety Score\n';
+            mockData.forEach(point => {
+                csv += `${point.name},${point.latitude},${point.longitude},${point.score}\n`;
+            });
+
+            const blob = new Blob([csv], { type: 'text/csv' });
+            const url = window.URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = 'safe_points.csv';
+            a.click();
+            window.URL.revokeObjectURL(url);
+        }
+
+        // Show message
+        function showMessage(text, type) {
+            const container = document.getElementById('messageContainer');
+            const msg = document.createElement('div');
+            msg.className = `message message-${type}`;
+            msg.textContent = text;
+            container.appendChild(msg);
+            setTimeout(() => msg.remove(), 3000);
+        }
+
+        // Event listeners
+        document.getElementById('maxDistance').addEventListener('input', (e) => {
+            document.getElementById('distanceValue').textContent = e.target.value + ' km';
+            updateMap();
+        });
+
+        document.getElementById('safetyScore').addEventListener('input', (e) => {
+            document.getElementById('scoreValue').textContent = e.target.value;
+            updateMap();
+        });
+
+        document.getElementById('onlyAbove').addEventListener('change', updateMap);
+
+        // Initialize on load
+        window.addEventListener('load', initMap);
+    </script>
+</body>
+</html>
